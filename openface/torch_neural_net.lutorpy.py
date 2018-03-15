@@ -73,27 +73,6 @@ class TorchNeuralNet:
         self._cuda = cuda
         self._imgDim = imgDim
 
-    def forwardPath(self, imgPath):
-        """
-        Perform a forward network pass of an image on disk.
-
-        :param imgPath: The path to the image.
-        :type imgPath: str
-        :return: Vector of features extracted with the neural network.
-        :rtype: numpy.ndarray
-        """
-        assert imgPath is not None
-
-        self._tensor[0] = image.load(imgPath, 3, 'float')
-        self._tensor[0] = image.scale(
-            self._tensor[0], self._imgDim, self._imgDim)
-        if self._cuda:
-            self._cuda_tensor._copy(self._tensor)
-            rep = self._net._forward(self._cuda_tensor)._float()
-        else:
-            rep = self._net.forward(self._net, self._tensor)
-        return rep.asNumpyArray().astype(np.float64)
-
     def forward(self, rgbImg):
         """
         Perform a forward network pass of an RGB image.
@@ -105,10 +84,16 @@ class TorchNeuralNet:
         """
         assert rgbImg is not None
 
-        t = '/tmp/openface-torchwrap-{}.png'.format(
-            binascii.b2a_hex(os.urandom(8)))
-        bgrImg = cv2.cvtColor(rgbImg, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(t, bgrImg)
-        rep = self.forwardPath(t)
-        os.remove(t)
+        rgbImg_norm = (np.float32(rgbImg)) / 255
+        r,g,b = cv2.split(rgbImg_norm)
+        self._tensor[0][0] = torch.fromNumpyArray(r)
+        self._tensor[0][1] = torch.fromNumpyArray(g)
+        self._tensor[0][2] = torch.fromNumpyArray(b)
+
+        if self._cuda:
+            self._cuda_tensor = self._cuda_tensor._copy(self._tensor)
+            rep = self._net._forward(self._cuda_tensor)._float()
+        else:
+            rep = self._net.forward(self._net, self._tensor)
+        rep = rep.asNumpyArray().astype(np.float64)
         return rep
